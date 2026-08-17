@@ -1,216 +1,213 @@
 import os
 import pickle
-from flask import Flask, request, render_template_string
+from flask import Flask, render_template_string, request, jsonify
 
 app = Flask(__name__)
 
-# --- LOAD MODEL ---
-MODEL_PATH = os.path.join(os.path.dirname(__file__), 'model.pkl')
+# --- MODEL LOADING ---
+MODEL_PATH = "model.pkl"
+VECTORIZER_PATH = "vectorizer.pkl"
 
-try:
-    with open(MODEL_PATH, 'rb') as f:
-        model = pickle.load(f)
-except Exception as e:
-    model = None
-    print(f"Error loading model: {e}")
+model = None
+vectorizer = None
 
-# --- EMBEDDED GUI (HTML + modern CSS) ---
+def load_artifacts():
+    global model, vectorizer
+    # Load Model
+    if os.path.exists(MODEL_PATH):
+        with open(MODEL_PATH, "rb") as f:
+            model = pickle.load(f)
+    elif os.path.exists("model_file.pkl"): # Alternative fallback name
+        with open("model_file.pkl", "rb") as f:
+            model = pickle.load(f)
+
+    # Load Vectorizer
+    if os.path.exists(VECTORIZER_PATH):
+        with open(VECTORIZER_PATH, "rb") as f:
+            vectorizer = pickle.load(f)
+    elif os.path.exists("tfidf.pkl"): # Alternative fallback name
+        with open("tfidf.pkl", "rb") as f:
+            vectorizer = pickle.load(f)
+
+load_artifacts()
+
+# --- UI TEMPLATE (HTML + Tailwind CSS + Modern Animations) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentiment Analysis AI</title>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <title>AI Sentiment Analysis</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <style>
-        :root {
-            --bg-color: #0f172a;
-            --card-bg: #1e293b;
-            --accent: #6366f1;
-            --accent-hover: #4f46e5;
-            --text-main: #f8fafc;
-            --text-muted: #94a3b8;
-            --pos-color: #22c55e;
-            --neg-color: #ef4444;
-        }
-
-        * {
-            box-sizing: border-box;
-            margin: 0;
-            padding: 0;
-            font-family: 'Inter', sans-serif;
-        }
-
-        body {
-            background-color: var(--bg-color);
-            color: var(--text-main);
-            min-height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            padding: 20px;
-        }
-
-        .container {
-            background: var(--card-bg);
-            width: 100%;
-            max-width: 600px;
-            padding: 40px;
-            border-radius: 20px;
-            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
-            border: 1px solid rgba(255, 255, 255, 0.05);
-        }
-
-        .header {
-            text-align: center;
-            margin-bottom: 30px;
-        }
-
-        .header h1 {
-            font-size: 1.8rem;
-            font-weight: 700;
-            letter-spacing: -0.025em;
-            margin-bottom: 8px;
-        }
-
-        .header p {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-        }
-
-        textarea {
-            width: 100%;
-            height: 140px;
-            background-color: rgba(15, 23, 42, 0.6);
-            border: 2px solid #334155;
-            border-radius: 12px;
-            padding: 16px;
-            color: var(--text-main);
-            font-size: 1rem;
-            resize: none;
-            outline: none;
-            transition: border-color 0.2s ease;
-        }
-
-        textarea:focus {
-            border-color: var(--accent);
-        }
-
-        .btn {
-            width: 100%;
-            background: var(--accent);
-            color: white;
-            padding: 14px;
-            border: none;
-            border-radius: 12px;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            margin-top: 20px;
-            transition: background 0.2s ease;
-        }
-
-        .btn:hover {
-            background: var(--accent-hover);
-        }
-
-        .result-box {
-            margin-top: 30px;
-            padding: 20px;
-            border-radius: 12px;
-            text-align: center;
-            font-weight: 600;
-            font-size: 1.2rem;
-            animation: fadeIn 0.3s ease-in-out;
-        }
-
-        .result-positive {
-            background-color: rgba(34, 197, 94, 0.1);
-            color: var(--pos-color);
-            border: 1px solid var(--pos-color);
-        }
-
-        .result-negative {
-            background-color: rgba(239, 68, 68, 0.1);
-            color: var(--neg-color);
-            border: 1px solid var(--neg-color);
-        }
-
-        .error-box {
-            background-color: rgba(239, 68, 68, 0.1);
-            color: var(--neg-color);
-            padding: 12px;
-            border-radius: 8px;
-            margin-bottom: 15px;
-            font-size: 0.9rem;
-            text-align: center;
-        }
-
-        @keyframes fadeIn {
-            from { opacity: 0; transform: translateY(10px); }
-            to { opacity: 1; transform: translateY(0); }
+        .glass {
+            background: rgba(255, 255, 255, 0.85);
+            backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.3);
         }
     </style>
 </head>
-<body>
-    <div class="container">
-        <div class="header">
-            <h1>Sentiment Analysis AI</h1>
-            <p>Analyze the emotion behind your text in real time</p>
+<body class="bg-gradient-to-br from-slate-900 via-indigo-950 to-slate-900 min-h-screen flex items-center justify-center p-4 text-slate-800">
+
+    <div class="glass w-full max-w-2xl rounded-3xl shadow-2xl p-8 transition-all duration-300">
+        <!-- Header -->
+        <div class="text-center mb-8">
+            <div class="inline-flex items-center justify-center w-16 h-16 bg-indigo-600 text-white rounded-2xl shadow-lg mb-4">
+                <i class="fa-solid fa-[#brain] fa-2xl"></i>
+            </div>
+            <h1 class="text-3xl font-extrabold text-slate-900 tracking-tight">Sentiment Detector</h1>
+            <p class="text-slate-500 text-sm mt-1">Analyze textual context instantly using Machine Learning</p>
         </div>
 
-        {% if error %}
-            <div class="error-box">{{ error }}</div>
-        {% endif %}
+        <!-- Text Input Form -->
+        <form id="sentimentForm" class="space-y-4">
+            <div>
+                <label for="text_input" class="block text-sm font-semibold text-slate-700 mb-2">Enter your text below:</label>
+                <textarea 
+                    id="text_input" 
+                    name="text" 
+                    rows="4" 
+                    required
+                    placeholder="Type or paste customer review, tweet, or message here..."
+                    class="w-full px-4 py-3 rounded-xl border border-slate-200 focus:ring-2 focus:ring-indigo-500 focus:border-indigo-500 outline-none transition-all shadow-sm text-slate-700 placeholder-slate-400"
+                ></textarea>
+            </div>
 
-        <form method="POST" action="/predict">
-            <textarea name="text" placeholder="Type or paste your text here..." required>{{ user_text }}</textarea>
-            <button type="submit" class="btn">Analyze Sentiment</button>
+            <button 
+                type="submit" 
+                id="submitBtn"
+                class="w-full bg-indigo-600 hover:bg-indigo-700 text-white font-semibold py-3 px-6 rounded-xl shadow-lg hover:shadow-indigo-500/30 transition-all flex items-center justify-center gap-2"
+            >
+                <span>Analyze Sentiment</span>
+                <i class="fa-solid fa-wand-magic-sparkles"></i>
+            </button>
         </form>
 
-        {% if prediction %}
-            <div class="result-box {% if prediction == 'positive' %}result-positive{% else %}result-negative{% endif %}">
-                Result: {{ prediction|capitalize }} Sentiment
+        <!-- Loading Spinner -->
+        <div id="loading" class="hidden text-center my-6">
+            <i class="fa-solid fa-circle-notch fa-spin text-3xl text-indigo-600"></i>
+            <p class="text-sm text-slate-500 mt-2 font-medium">Evaluating text structure...</p>
+        </div>
+
+        <!-- Output Result Section -->
+        <div id="resultCard" class="hidden mt-6 p-6 rounded-2xl border transition-all">
+            <div class="flex items-center justify-between">
+                <div>
+                    <span class="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">Prediction</span>
+                    <h3 id="sentimentResult" class="text-2xl font-black capitalize"></h3>
+                </div>
+                <div id="sentimentIcon" class="text-4xl"></div>
             </div>
-        {% endif %}
+            <div id="probabilityContainer" class="mt-4 hidden">
+                <div class="w-full bg-slate-200 rounded-full h-2.5 overflow-hidden">
+                    <div id="probabilityBar" class="h-2.5 rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+                <p id="probabilityText" class="text-right text-xs text-slate-500 mt-1 font-semibold"></p>
+            </div>
+        </div>
     </div>
+
+    <!-- Client-Side Dynamic Interaction -->
+    <script>
+        document.getElementById('sentimentForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+
+            const textInput = document.getElementById('text_input').value;
+            const submitBtn = document.getElementById('submitBtn');
+            const loading = document.getElementById('loading');
+            const resultCard = document.getElementById('resultCard');
+            const sentimentResult = document.getElementById('sentimentResult');
+            const sentimentIcon = document.getElementById('sentimentIcon');
+            const probContainer = document.getElementById('probabilityContainer');
+            const probBar = document.getElementById('probabilityBar');
+            const probText = document.getElementById('probabilityText');
+
+            // Set loading UI
+            submitBtn.disabled = true;
+            loading.classList.remove('hidden');
+            resultCard.classList.add('hidden');
+
+            try {
+                const response = await fetch('/predict', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ text: textInput })
+                });
+
+                const data = await response.json();
+
+                if (data.error) {
+                    alert(data.error);
+                } else {
+                    sentimentResult.textContent = data.sentiment;
+                    
+                    // UI styling based on sentiment value
+                    const isPositive = data.sentiment.toLowerCase().includes('pos');
+                    
+                    if (isPositive) {
+                        resultCard.className = "mt-6 p-6 rounded-2xl border border-emerald-200 bg-emerald-50/50 text-emerald-900";
+                        sentimentIcon.innerHTML = '<i class="fa-solid fa-face-smile text-emerald-500"></i>';
+                        probBar.className = "h-2.5 rounded-full bg-emerald-500 transition-all duration-500";
+                    } else {
+                        resultCard.className = "mt-6 p-6 rounded-2xl border border-rose-200 bg-rose-50/50 text-rose-900";
+                        sentimentIcon.innerHTML = '<i class="fa-solid fa-face-frown text-rose-500"></i>';
+                        probBar.className = "h-2.5 rounded-full bg-rose-500 transition-all duration-500";
+                    }
+
+                    if (data.confidence !== null) {
+                        probContainer.classList.remove('hidden');
+                        probBar.style.width = `${data.confidence}%`;
+                        probText.textContent = `Confidence: ${data.confidence}%`;
+                    } else {
+                        probContainer.classList.add('hidden');
+                    }
+
+                    resultCard.classList.remove('hidden');
+                }
+            } catch (err) {
+                alert("Something went wrong with the connection!");
+            } finally {
+                submitBtn.disabled = false;
+                loading.classList.add('hidden');
+            }
+        });
+    </script>
 </body>
 </html>
 """
 
-@app.route('/', methods=['GET'])
+# --- ROUTES ---
+@app.route("/")
 def index():
-    return render_template_string(HTML_TEMPLATE, prediction=None, user_text="")
+    return render_template_string(HTML_TEMPLATE)
 
-@app.route('/predict', methods=['POST'])
+@app.route("/predict", methods=["POST"])
 def predict():
-    if not model:
-        return render_template_string(
-            HTML_TEMPLATE, 
-            error="Model file (model.pkl) not loaded properly.", 
-            prediction=None, 
-            user_text=""
-        )
+    if not model or not vectorizer:
+        return jsonify({"error": "Model or vectorizer pickles were not loaded correctly on server."}), 500
 
-    user_text = request.form.get('text', '')
+    data = request.get_json(force=True)
+    text = data.get("text", "")
+
+    if not text.strip():
+        return jsonify({"error": "Empty text provided."}), 400
+
+    # Vectorize and Predict
+    transformed_text = vectorizer.transform([text])
+    prediction = model.predict(transformed_text)[0]
     
-    if user_text.strip():
-        try:
-            # Predict using your MultinomialNB model
-            prediction_array = model.predict([user_text])
-            prediction = prediction_array[0]
-        except Exception as e:
-            return render_template_string(
-                HTML_TEMPLATE, 
-                error=f"Prediction failed: {str(e)}", 
-                prediction=None, 
-                user_text=user_text
-            )
-    else:
-        prediction = None
+    # Calculate Probability/Confidence if supported by model
+    confidence = None
+    if hasattr(model, "predict_proba"):
+        probabilities = model.predict_proba(transformed_text)[0]
+        confidence = round(max(probabilities) * 100, 2)
 
-    return render_template_string(HTML_TEMPLATE, prediction=prediction, user_text=user_text)
+    return jsonify({
+        "sentiment": str(prediction),
+        "confidence": confidence
+    })
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000, debug=True)
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=5000, debug=True)
