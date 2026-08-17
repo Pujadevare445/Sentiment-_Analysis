@@ -1,39 +1,50 @@
-# app.py
-from flask import Flask, render_request, request
+import os
 import pickle
-import numpy as np
+from flask import Flask, request, render_template_string
 
 app = Flask(__name__)
 
-# Load Model & Vectorizer
-# Ensure 'model.pkl' and 'vectorizer.pkl' are in the same directory
+# --- LOAD MODEL ---
+MODEL_PATH = os.path.join(os.path.dirname(__file__), 'model.pkl')
+
 try:
-    with open('model.pkl', 'rb') as f:
+    with open(MODEL_PATH, 'rb') as f:
         model = pickle.load(f)
-    with open('vectorizer.pkl', 'rb') as f:
-        vectorizer = pickle.load(f)
 except Exception as e:
     model = None
-    vectorizer = None
+    print(f"Error loading model: {e}")
 
+# --- EMBEDDED GUI (HTML + modern CSS) ---
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sentiment Analysis Dashboard</title>
+    <title>Sentiment Analysis AI</title>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;600;700&display=swap" rel="stylesheet">
     <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: #1e293b;
+            --accent: #6366f1;
+            --accent-hover: #4f46e5;
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --pos-color: #22c55e;
+            --neg-color: #ef4444;
+        }
+
         * {
             box-sizing: border-box;
             margin: 0;
             padding: 0;
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            font-family: 'Inter', sans-serif;
         }
 
         body {
-            background: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
-            color: #f8fafc;
+            background-color: var(--bg-color);
+            color: var(--text-main);
             min-height: 100vh;
             display: flex;
             align-items: center;
@@ -42,106 +53,98 @@ HTML_TEMPLATE = """
         }
 
         .container {
-            background: rgba(30, 41, 59, 0.7);
-            backdrop-filter: blur(12px);
-            border: 1px solid rgba(255, 255, 255, 0.1);
-            border-radius: 24px;
-            padding: 40px;
+            background: var(--card-bg);
             width: 100%;
             max-width: 600px;
-            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+            padding: 40px;
+            border-radius: 20px;
+            box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.05);
         }
 
-        h1 {
-            font-size: 2rem;
-            font-weight: 700;
+        .header {
             text-align: center;
-            margin-bottom: 8px;
-            background: linear-gradient(to right, #38bdf8, #818cf8);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-        }
-
-        p.subtitle {
-            text-align: center;
-            color: #94a3b8;
             margin-bottom: 30px;
-            font-size: 0.95rem;
         }
 
-        form {
-            display: flex;
-            flex-direction: column;
-            gap: 20px;
+        .header h1 {
+            font-size: 1.8rem;
+            font-weight: 700;
+            letter-spacing: -0.025em;
+            margin-bottom: 8px;
+        }
+
+        .header p {
+            color: var(--text-muted);
+            font-size: 0.95rem;
         }
 
         textarea {
             width: 100%;
             height: 140px;
-            background: rgba(15, 23, 42, 0.6);
-            border: 1px solid #334155;
-            border-radius: 14px;
+            background-color: rgba(15, 23, 42, 0.6);
+            border: 2px solid #334155;
+            border-radius: 12px;
             padding: 16px;
-            color: #f8fafc;
+            color: var(--text-main);
             font-size: 1rem;
             resize: none;
             outline: none;
-            transition: all 0.3s ease;
+            transition: border-color 0.2s ease;
         }
 
         textarea:focus {
-            border-color: #6366f1;
-            box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.2);
+            border-color: var(--accent);
         }
 
-        button {
-            background: linear-gradient(135deg, #6366f1 0%, #4f46e5 100%);
+        .btn {
+            width: 100%;
+            background: var(--accent);
             color: white;
-            border: none;
             padding: 14px;
+            border: none;
             border-radius: 12px;
             font-size: 1rem;
             font-weight: 600;
             cursor: pointer;
-            transition: transform 0.2s ease, box-shadow 0.2s ease;
+            margin-top: 20px;
+            transition: background 0.2s ease;
         }
 
-        button:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 8px 20px rgba(99, 102, 241, 0.4);
+        .btn:hover {
+            background: var(--accent-hover);
         }
 
-        .result-card {
+        .result-box {
             margin-top: 30px;
             padding: 20px;
-            border-radius: 16px;
+            border-radius: 12px;
             text-align: center;
-            animation: fadeIn 0.4s ease-in-out;
+            font-weight: 600;
+            font-size: 1.2rem;
+            animation: fadeIn 0.3s ease-in-out;
         }
 
-        .positive {
-            background: rgba(34, 197, 94, 0.15);
-            border: 1px solid rgba(34, 197, 94, 0.3);
-            color: #4ade80;
+        .result-positive {
+            background-color: rgba(34, 197, 94, 0.1);
+            color: var(--pos-color);
+            border: 1px solid var(--pos-color);
         }
 
-        .negative {
-            background: rgba(239, 68, 68, 0.15);
-            border: 1px solid rgba(239, 68, 68, 0.3);
-            color: #f87171;
+        .result-negative {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--neg-color);
+            border: 1px solid var(--neg-color);
         }
 
-        .sentiment-title {
-            font-size: 1.25rem;
-            font-weight: 700;
-            text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 6px;
-        }
-
-        .confidence {
+        .error-box {
+            background-color: rgba(239, 68, 68, 0.1);
+            color: var(--neg-color);
+            padding: 12px;
+            border-radius: 8px;
+            margin-bottom: 15px;
             font-size: 0.9rem;
-            opacity: 0.85;
+            text-align: center;
         }
 
         @keyframes fadeIn {
@@ -152,48 +155,62 @@ HTML_TEMPLATE = """
 </head>
 <body>
     <div class="container">
-        <h1>Sentiment Analysis</h1>
-        <p class="subtitle">Enter text below to detect its underlying tone.</p>
-        
-        <form action="/" method="POST">
-            <textarea name="text" placeholder="Type or paste text here..." required>{{ text }}</textarea>
-            <button type="submit">Analyze Sentiment</button>
+        <div class="header">
+            <h1>Sentiment Analysis AI</h1>
+            <p>Analyze the emotion behind your text in real time</p>
+        </div>
+
+        {% if error %}
+            <div class="error-box">{{ error }}</div>
+        {% endif %}
+
+        <form method="POST" action="/predict">
+            <textarea name="text" placeholder="Type or paste your text here..." required>{{ user_text }}</textarea>
+            <button type="submit" class="btn">Analyze Sentiment</button>
         </form>
 
-        {% if sentiment %}
-        <div class="result-card {{ sentiment.lower() }}">
-            <div class="sentiment-title">{{ sentiment }} Sentiment</div>
-            {% if confidence %}
-            <div class="confidence">Confidence score: {{ confidence }}%</div>
-            {% endif %}
-        </div>
+        {% if prediction %}
+            <div class="result-box {% if prediction == 'positive' %}result-positive{% else %}result-negative{% endif %}">
+                Result: {{ prediction|capitalize }} Sentiment
+            </div>
         {% endif %}
     </div>
 </body>
 </html>
 """
 
-@app.route('/', methods=['GET', 'POST'])
+@app.route('/', methods=['GET'])
 def index():
-    sentiment = None
-    confidence = None
-    text = ""
+    return render_template_string(HTML_TEMPLATE, prediction=None, user_text="")
+
+@app.route('/predict', methods=['POST'])
+def predict():
+    if not model:
+        return render_template_string(
+            HTML_TEMPLATE, 
+            error="Model file (model.pkl) not loaded properly.", 
+            prediction=None, 
+            user_text=""
+        )
+
+    user_text = request.form.get('text', '')
     
-    if request.method == 'POST':
-        text = request.form.get('text', '')
-        if text and model and vectorizer:
-            transformed_text = vectorizer.transform([text])
-            prediction = model.predict(transformed_text)[0]
-            
-            # Map output label
-            sentiment = str(prediction).capitalize()
+    if user_text.strip():
+        try:
+            # Predict using your MultinomialNB model
+            prediction_array = model.predict([user_text])
+            prediction = prediction_array[0]
+        except Exception as e:
+            return render_template_string(
+                HTML_TEMPLATE, 
+                error=f"Prediction failed: {str(e)}", 
+                prediction=None, 
+                user_text=user_text
+            )
+    else:
+        prediction = None
 
-            # Calculate confidence score if available
-            if hasattr(model, "predict_proba"):
-                probs = model.predict_proba(transformed_text)[0]
-                confidence = round(np.max(probs) * 100, 2)
-
-    return render_template_string(HTML_TEMPLATE, sentiment=sentiment, confidence=confidence, text=text)
+    return render_template_string(HTML_TEMPLATE, prediction=prediction, user_text=user_text)
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    app.run(host='0.0.0.0', port=5000, debug=True)
